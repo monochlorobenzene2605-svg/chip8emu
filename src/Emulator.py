@@ -154,7 +154,7 @@ class Emulator :
     def _call_addr(self): # 2nnn
         (_,n1,n2,n3) = self._get_nibbles()
         nnn = Emulator._join_nibbles(n1,n2,n3)
-        self._env.stacks[self._env.sp] = self._env.pc+0x2
+        self._env.stacks[self._env.sp] = self._env.pc
         self._env.sp += 1
         self._env.pc = nnn
 
@@ -330,11 +330,17 @@ class Emulator :
                 x = vx+xx
                 y = vy+yy
                 if x >= len(self._env.video_memory[y]): #スプライトの一部が画面からはみ出る場合、逆方向に折り返す
-                    y += 1
                     x -= 32
-                if y >= len(self._env.video_memory): #縦方向にはみ出る場合の仕様がよくわからない とりあえず何もしないでおく
-                    continue
-                self._env.video_memory[y][x] ^= sprite[yy][xx]
+                if y >= len(self._env.video_memory): #縦方向にはみ出る場合の仕様がよくわからない とりあえず縦に逆方向に折り返す
+                    y -= 16
+                def _xor(op1,op2):
+                    if op1==0 and op2==0:
+                        return 0
+                    if op1!=0 and op2!=0:
+                        return 0
+                    if op1!=0 or op2!=0:
+                        return 1
+                self._env.video_memory[y][x] = _xor(self._env.video_memory[y][x],sprite[yy][xx])
 
     def _byte_to_bitarr(byte):
         bitarr = []
@@ -393,7 +399,7 @@ class Emulator :
                 envs = "dt:{:02x} ".format(self._env.dt)
                 envs += "st:{:02x}       ".format(self._env.st)
                 envs += "i:{:04x}      ".format(self._env.i)
-                envs += "pc:{:04x} ".format(self._env.pc)
+                envs += "pc:{:04x}     ".format(self._env.pc)
                 envs += "sp:{:02x}  ".format(self._env.sp)
                 screen.addstr(34,0,envs,)
             _show_env()
