@@ -43,7 +43,7 @@ class Emulator :
         N1=49   # 1234   123C
         N2=50   # qwer = 456D
         N3=51   # asdf   789E
-        N4=81   # zxdv   A0BF
+        N4=81   # zxcv   A0BF
         N5=87
         N6=69
         N7=65
@@ -71,6 +71,25 @@ class Emulator :
         for k in self.Key:
             self._key_conversion_table[k] = i
             i+=1
+    def _num_to_chip8_keycode(self,num):# アセンブラレベルのキーコードからこのアプリ上のキーコードへの変換テーブル
+        t = [self.Key.N0,
+             self.Key.N1,
+             self.Key.N2,
+             self.Key.N3,
+             self.Key.N4,
+             self.Key.N5,
+             self.Key.N6,
+             self.Key.N7,
+             self.Key.N8,
+             self.Key.N9,
+             self.Key.A,
+             self.Key.B,
+             self.Key.C,
+             self.Key.D,
+             self.Key.E,
+             self.Key.F
+        ]
+        return t[num]
 
     def _get_input(self):
         import ctypes
@@ -83,8 +102,8 @@ class Emulator :
     def _pulse_60hz(self):
         t = threading.Timer(1/60, self._pulse_60hz)
         t.start()
-        if self._env.dt<0 : self._env.dt-=1
-        if self._env.st<0 : self._env.st-=1
+        if self._env.dt>0 : self._env.dt-=1
+        if self._env.st>0 : self._env.st-=1
 
     def _init_instructions(self):
         def _not_implemented(): 
@@ -143,12 +162,12 @@ class Emulator :
         return instructions
 
     def _get_nibbles(self):
-        n1 = self._env.memory[self._env.pc-2]
-        n2 = (n1 & 0x0f)
-        n1 = (n1 & 0xf0) >> 4
-        n3 = self._env.memory[self._env.pc-1]
-        n4 = (n3 & 0x0f)
-        n3 = (n3 & 0xf0) >> 4
+        _1st = self._env.memory[self._env.pc-2]
+        n1 = (_1st & 0xf0) >> 4
+        n2 = (_1st & 0x0f)
+        _2nd = self._env.memory[self._env.pc-1]
+        n3 = (_2nd & 0xf0) >> 4
+        n4 = (_2nd & 0x0f)
         return (n1,n2,n3,n4)
         
     def _call_addr(self): # 2nnn
@@ -209,19 +228,20 @@ class Emulator :
         if op == 5: # sub vx, vy
             if self._env.registers[x] > self._env.registers[y]:
                 self._env.registers[0xf] = 1
+            else:
+                self._env.registers[0xf] = 0
             self._env.registers[x] -= self._env.registers[y]
             is_overflow = (self._env.registers[x]<0)
             if is_overflow: 
-                self._env.registers[0xf] = 1
                 self._env.registers[x] += 0x100
-            else:
-                self._env.registers[0xf] = 0
         if op == 6: # shr vx{, vy}  vyは読み捨て
             self._env.registers[0xf] = (self._env.registers[x]&0b00000001)
             self._env.registers[x] = self._env.registers[x]>>1
         if op == 7: # subn vx, vy
             if self._env.registers[x] < self._env.registers[y]:
                 self._env.registers[0xf] = 1
+            else:
+                self._env.registers[0xf] = 0
             self._env.registers[x] = self._env.registers[y]-self._env.registers[x]
         if op == 0xe: # shl vx{, vy}  vyは読み捨て
             self._env.registers[0xf] = ((self._env.registers[x]&0b10000000)>>7)
@@ -244,7 +264,9 @@ class Emulator :
         self._env.i = nnn
 
     def _jp_v0_addr(self): # Bnnn
-        raise NotImplementedError()
+        (_,n1,n2,n3) = self._get_nibbles()
+        nnn = Emulator._join_nibbles(n1,n2,n3)
+        self._env.pc = nnn + self._env.registers[0]
 
     def _rnd_vx_byte(self): # Cxkk
         import random
@@ -254,13 +276,22 @@ class Emulator :
         self._env.registers[x] = (rnd&kk)
 
     def _skp_vx(self): # Ex9E
-        raise NotImplementedError()
+        (_,x,_,_) = self._get_nibbles()
+        keycode = self._num_to_chip8_keycode(self._env.registers[x])
+        is_pressed = (self._key[keycode])
+        if is_pressed:
+            self._env.pc += 2
 
     def _sknp_vx(self): # ExA1
-        raise NotImplementedError()
+        (_,x,_,_) = self._get_nibbles()
+        keycode = self._num_to_chip8_keycode(self._env.registers[x])
+        is_pressed = (self._key[keycode])
+        if not is_pressed:
+            self._env.pc += 2
 
     def _ld_vx_dt(self): # Fx07
-        raise NotImplementedError()
+        (_,x,_,_) = self._get_nibbles()
+        self._env.registers[x] = self._env.dt
 
     def _ld_vx_k(self): # Fx0A
         (_,x,_,_) = self._get_nibbles()
@@ -277,10 +308,12 @@ class Emulator :
 
 
     def _ld_dt_vx(self): # Fx15
-        raise NotImplementedError()
+        (_,x,_,_) = self._get_nibbles()
+        self._env.dt = self._env.registers[x]
 
     def _ld_st_vx(self): # Fx18
-        raise NotImplementedError()
+        (_,x,_,_) = self._get_nibbles()
+        self._env.st = self._env.registers[x]
 
     def _add_i_vx(self): # Fx1E
         (_,x,_,_) = self._get_nibbles()
@@ -304,7 +337,7 @@ class Emulator :
             self._env.registers[i] = self._env.memory[self._env.i+i]
 
     def _cls(self): #00E0
-        self.env.video_memory = [[0] * 64 for i in range(32)]
+        self._env.video_memory = [[0] * 64 for i in range(32)]
 
     def _ret(self): #00EE
         self._env.sp -= 1
@@ -329,10 +362,10 @@ class Emulator :
             for xx in range(len(sprite[yy])):
                 x = vx+xx
                 y = vy+yy
-                if x >= len(self._env.video_memory[y]): #スプライトの一部が画面からはみ出る場合、逆方向に折り返す
-                    x -= 32
                 if y >= len(self._env.video_memory): #縦方向にはみ出る場合の仕様がよくわからない とりあえず縦に逆方向に折り返す
-                    y -= 16
+                    y -= 32
+                if x >= len(self._env.video_memory[y]): #スプライトの一部が画面からはみ出る場合、逆方向に折り返す
+                    x -= 16
                 def _xor(op1,op2):
                     if op1==0 and op2==0:
                         return 0
