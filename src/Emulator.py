@@ -1,6 +1,7 @@
 import threading
 import curses
 from enum import IntEnum
+import numpy as np
 import math
 
 class Environment :
@@ -24,7 +25,7 @@ class Environment :
     def __init__(self) :
         self.memory = [0x0]*4096
         self.video_memory = [[0b0] * 64 for i in range(32)]
-        self.registers = [0x0]*0x10 # V1,V2 ~ V9,Va,Vb,~ Vf までの16個。原則16進数をindexとしてアクセスする
+        self.registers = np.array([0x0]*0x10, dtype=np.uint8) # V1,V2 ~ V9,Va,Vb,~ Vf までの16個。原則16進数をindexとしてアクセスする
         self.pc = 0x200
         self.sp = 0x0 # スタックポインタ 8bit
         self.dt = 0x0
@@ -105,10 +106,10 @@ class Emulator :
         if self._env.dt>0 : self._env.dt-=1
         if self._env.st>0 : self._env.st-=1
 
+    def _not_implemented(self): 
+        raise NotImplementedError()
     def _init_instructions(self):
-        def _not_implemented(): 
-            raise NotImplementedError()
-        instructions = [_not_implemented]*0xffff
+        instructions = [self._not_implemented]*0xffff
         instructions[0x00E0] = self._cls
         instructions[0x00EE] = self._ret
         for i in range(0xfff+1):
@@ -203,9 +204,6 @@ class Emulator :
         (_,x,k1,k2) = self._get_nibbles()
         kk = Emulator._join_nibbles(k1,k2)
         self._env.registers[x] += kk
-        is_overflow = (self._env.registers[x]>0xff)
-        if is_overflow: 
-                self._env.registers[x] -= 0x100
 
     def _calc_vx_vy(self): # 8xyp
         (_,x,y,op) = self._get_nibbles()
@@ -218,40 +216,37 @@ class Emulator :
         if op == 3: # xor vx, vy
             self._env.registers[x] ^= self._env.registers[y]
         if op == 4: # add vx, vy
-            self._env.registers[x] += self._env.registers[y]
-            is_overflow = (self._env.registers[x]>0xff)
+            registers_int16 = self._env.registers.astype("int16")
+            is_overflow = ((registers_int16[x]+registers_int16[y])>0xff)
             if is_overflow: 
                 self._env.registers[0xf] = 1
-                self._env.registers[x] -= 0x100
             else:
                 self._env.registers[0xf] = 0
+            self._env.registers[x] += self._env.registers[y]
         if op == 5: # sub vx, vy
-            if self._env.registers[x] > self._env.registers[y]:
+            if self._env.registers[x] >= self._env.registers[y]:
                 self._env.registers[0xf] = 1
             else:
                 self._env.registers[0xf] = 0
             self._env.registers[x] -= self._env.registers[y]
-            is_overflow = (self._env.registers[x]<0)
-            if is_overflow: 
-                self._env.registers[x] += 0x100
         if op == 6: # shr vx{, vy}  vyは読み捨て
             self._env.registers[0xf] = (self._env.registers[x]&0b00000001)
             self._env.registers[x] = self._env.registers[x]>>1
         if op == 7: # subn vx, vy
-            if self._env.registers[x] < self._env.registers[y]:
+            if self._env.registers[x] <= self._env.registers[y]:
                 self._env.registers[0xf] = 1
             else:
                 self._env.registers[0xf] = 0
-            self._env.registers[x] = self._env.registers[y]-self._env.registers[x]
+            self._env.registers[x] = self._env.registers[y] - self._env.registers[x]
         if op == 0xe: # shl vx{, vy}  vyは読み捨て
             self._env.registers[0xf] = ((self._env.registers[x]&0b10000000)>>7)
-            self._env.registers[x] = self._env.registers[x]<<1
-            is_overflow = (self._env.registers[x]>0xff)
+            registers_int16 = self._env.registers.astype("int16")
+            is_overflow = ((registers_int16[x]<<1)>0xff)
             if is_overflow: 
                 self._env.registers[0xf] = 1
-                self._env.registers[x] -= 0x100
             else:
                 self._env.registers[0xf] = 0
+            self._env.registers[x] = self._env.registers[x]<<1
 
     def _sne_vx_vy(self): # 9xy0
         (_,x,y,_) = self._get_nibbles()
