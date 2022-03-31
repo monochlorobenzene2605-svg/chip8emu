@@ -347,6 +347,7 @@ class Emulator :
         vx = self._env.registers[vx]
         vy = self._env.registers[vy]
         sprite = []
+        self._env.registers[0xf] = 0
         for i in range(n):
             sprite.append(self._env.memory[self._env.i+i])
         for i in range(len(sprite)):
@@ -364,7 +365,8 @@ class Emulator :
                 def _xor(op1,op2):
                     if op1==0 and op2==0:
                         return 0
-                    if op1!=0 and op2!=0:
+                    if op1!=0 and op2!=0: # collision!!!
+                        self._env.registers[0xf] = 1
                         return 0
                     if op1!=0 or op2!=0:
                         return 1
@@ -407,7 +409,6 @@ class Emulator :
             if n == -1:
                 screen.getkey()
             self._update_screen(screen)
-    
     def _update_screen(self, screen): #TODO: 画面表示周りは別クラスにくくりだし
         screen.clear()
         try:
