@@ -449,6 +449,7 @@ class Emulator :
         return op
 
     def _exec(self,op):
-        self._instructions[op]()
-
-
+        try:
+            self._instructions[op]()
+        except OverflowError:
+            pass # 緊急措置
