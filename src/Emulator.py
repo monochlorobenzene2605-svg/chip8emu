@@ -410,7 +410,6 @@ class Emulator :
                 screen.getkey()
             self._update_screen(screen)
     def _update_screen(self, screen): #TODO: 画面表示周りは別クラスにくくりだし
-        screen.clear()
         try:
             for y in range(len(self._env.video_memory)):
                 row = ""
